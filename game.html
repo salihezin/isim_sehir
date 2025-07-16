@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>İsim Şehir Oyunu</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <style>
+        #timer {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        #letter {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body class="p-4">
+    <h2>İsim Şehir Oyunu</h2>
+
+    <div class="mb-4">
+        <div id="letter" class="text-primary">?</div>
+        <div>Kalan Süre: <span id="timer" class="text-danger">-</span> saniye</div>
+    </div>
+
+    <form id="answerForm">
+        <div class="mb-3"><label class="form-label">İsim</label><input type="text" class="form-control" name="isim"
+                required></div>
+        <div class="mb-3"><label class="form-label">Şehir</label><input type="text" class="form-control" name="sehir"
+                required></div>
+        <div class="mb-3"><label class="form-label">Hayvan</label><input type="text" class="form-control" name="hayvan"
+                required></div>
+        <div class="mb-3"><label class="form-label">Bitki</label><input type="text" class="form-control" name="bitki"
+                required></div>
+        <div class="mb-3"><label class="form-label">Ünlü</label><input type="text" class="form-control" name="unlu"
+                required></div>
+        <div class="mb-3"><label class="form-label">Eşya</label><input type="text" class="form-control" name="esya"
+                required></div>
+
+        <button type="button" id="finishBtn" class="btn btn-warning">Bitirdim</button>
+    </form>
+
+    <hr />
+
+    <div id="answersSection" class="d-none mt-5">
+        <h4>Oyuncu Cevapları</h4>
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Oyuncu</th>
+                    <th>İsim</th>
+                    <th>Şehir</th>
+                    <th>Hayvan</th>
+                    <th>Bitki</th>
+                    <th>Ünlü</th>
+                    <th>Eşya</th>
+                    <th>İtiraz</th>
+                </tr>
+            </thead>
+            <tbody id="answersTableBody"></tbody>
+        </table>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const gameId = urlParams.get("game_id");
+        const playerName = urlParams.get("player_name");
+
+        let currentLetter = "?"; // sunucudan gelecek
+        const letterDisplay = document.getElementById("letter");
+        const timer = document.getElementById("timer");
+        const form = document.getElementById("answerForm");
+
+        const ws = new WebSocket(`ws://${location.hostname}:8000/ws/${gameId}/${playerName}`);
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === "start_final_timer") {
+                alert("Bir oyuncu bitirdi! 20 saniyeniz kaldı.");
+
+                currentLetter = msg.letter;
+                letterDisplay.textContent = currentLetter;
+
+                let remaining = msg.seconds;
+                timer.textContent = remaining;
+
+                const interval = setInterval(() => {
+                    remaining--;
+                    timer.textContent = remaining;
+
+                    if (remaining <= 0) {
+                        clearInterval(interval);
+                        timer.textContent = "Süre doldu!";
+                        form.querySelectorAll("input").forEach(inp => inp.disabled = true);
+                        sendAnswers(); // otomatik gönder
+                    }
+                }, 1000);
+            }
+
+            if (msg.type === "show_answers") {
+                const section = document.getElementById("answersSection");
+                const tableBody = document.getElementById("answersTableBody");
+                section.classList.remove("d-none");
+                tableBody.innerHTML = "";
+
+                msg.answers.forEach(ans => {
+                    const row = document.createElement("tr");
+                    row.innerHTML = `
+            <td>${ans.player}</td>
+            <td>${ans.isim}</td>
+            <td>${ans.sehir}</td>
+            <td>${ans.hayvan}</td>
+            <td>${ans.bitki}</td>
+            <td>${ans.unlu}</td>
+            <td>${ans.esya}</td>
+          `;
+
+                    const itirazCell = document.createElement("td");
+                    if (ans.player !== playerName) {
+                        const btn = document.createElement("button");
+                        btn.className = "btn btn-sm btn-danger";
+                        btn.textContent = "İtiraz Et";
+                        btn.onclick = () => {
+                            if (ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({
+                                    type: "challenge_answer",
+                                    challenger: playerName,
+                                    target: ans.player,
+                                    category: "", // kategori eklenebilir
+                                    answer: "", // opsiyonel
+                                    round_letter: currentLetter
+                                }));
+                                alert(`${ans.player} adlı oyuncunun cevabına itiraz ettiniz.`);
+                            }
+                        };
+                        itirazCell.appendChild(btn);
+                    } else {
+                        itirazCell.textContent = "-";
+                    }
+
+                    row.appendChild(itirazCell);
+                    tableBody.appendChild(row);
+                });
+            }
+        };
+
+        document.getElementById("finishBtn").addEventListener("click", () => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send("round_finished");
+                alert("Bitirdim sinyali gönderildi!");
+                form.querySelectorAll("input").forEach(inp => inp.disabled = true);
+                sendAnswers(); // bitiren hemen gönderiyor
+            }
+        });
+
+        function sendAnswers() {
+            const formData = new FormData(form);
+            const cevaplar = Object.fromEntries(formData.entries());
+
+            const payload = {
+                game_id: gameId,
+                player_name: playerName,
+                round_letter: currentLetter,
+                answer_isim: cevaplar.isim || "",
+                answer_sehir: cevaplar.sehir || "",
+                answer_hayvan: cevaplar.hayvan || "",
+                answer_bitki: cevaplar.bitki || "",
+                answer_unlu: cevaplar.unlu || "",
+                answer_esya: cevaplar.esya || ""
+            };
+
+            fetch(`http://${location.hostname}:8000/submit-answer`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            }).then(res => {
+                if (!res.ok) throw new Error("Cevaplar gönderilemedi.");
+            }).catch(err => console.error(err));
+        }
+    </script>
+</body>
+
+</html>
