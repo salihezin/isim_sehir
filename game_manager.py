@@ -6,13 +6,17 @@ class GameManager:
 
     def create_game(self, host_name, round_time=20):
         game_id = str(uuid.uuid4())[:6]
+        from random import choice
+        letters = ["A", "B", "C", "Ç", "D", "E", "F", "G", "H", "I", "İ", "K", "L", "M", "N", "O", "Ö", "P", "R", "S", "Ş", "T", "U", "Ü", "V", "Y", "Z"]
+        chosen_letter = choice(letters)
+
         self.active_games[game_id] = {
             "host": host_name,
             "round_time": round_time,
             "players": [host_name],
             "jury": None,
             "round_ended": False,
-            "round_letter": None,
+            "round_letter": chosen_letter,
         }
         return game_id
 
