@@ -1,13 +1,15 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, Body, HTTPException, APIRouter
+from fastapi import Body, Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from game_manager import game_manager
-from database import Base, engine, SessionLocal
-from models import PlayerAnswer
 from sqlalchemy.orm import Session
+
+from database import Base, SessionLocal, engine
+from game_manager import game_manager
+from models import PlayerAnswer
 
 
 
 app = FastAPI()
+Base.metadata.create_all(bind=engine)
 
 # Basit CORS ayarı
 app.add_middleware(
@@ -143,12 +145,12 @@ async def submit_answers(
         game_id=answer_data["game_id"],
         player_name=answer_data["player_name"],
         round_letter=answer_data["round_letter"],
-        answer_isim=answer_data.get("answer_isim", ""),
-        answer_sehir=answer_data.get("answer_sehir", ""),
-        answer_hayvan=answer_data.get("answer_hayvan", ""),
-        answer_bitki=answer_data.get("answer_bitki", ""),
-        answer_unlu=answer_data.get("answer_unlu", ""),
-        answer_esya=answer_data.get("answer_esya", ""),
+        answer_isim=answer_data.get("isim", ""),
+        answer_sehir=answer_data.get("sehir", ""),
+        answer_hayvan=answer_data.get("hayvan", ""),
+        answer_bitki=answer_data.get("bitki", ""),
+        answer_unlu=answer_data.get("unlu", ""),
+        answer_esya=answer_data.get("esya", ""),
     )
 
     db.add(answer)
@@ -197,18 +199,12 @@ async def get_answers(game_id: str, letter: str):
     ]
         
 async def notify_start_final_timer(game_id: str):
-    from random import choice
-    letters = ["A", "B", "C", "Ç", "D", "E", "F", "G", "H", "I", "İ", "K", "L", "M", "N", "O", "Ö", "P", "R", "S", "Ş", "T", "U", "Ü", "V", "Y", "Z"]
-    chosen_letter = choice(letters)
-
-    # Bu harfi kaydetmek istiyorsan game_manager içine de koyabilirsin
 
     for client in connected_clients.get(game_id, []):
         try:
             await client.send_json({
                 "type": "start_final_timer",
                 "seconds": 20,
-                "letter": chosen_letter
             })
         except Exception as e:
             print(f"Final timer mesajı gönderilemedi: {e}")
@@ -228,7 +224,9 @@ async def notify_players(game_id: str):
     players = game_manager.get_players(game_id)
     message = {
         "type": "player_list",
-        "players": players
+        "players": players,
+        "jury": game_manager.get_jury(game_id),
+        "round_letter": game_manager.get_round_letter(game_id),
     }
 
     for client in connected_clients.get(game_id, []):
@@ -295,6 +293,3 @@ async def broadcast_answers(game_id: str):
 
     for client in connected_clients.get(game_id, []):
         await client.send_json(response)
-
-
-Base.metadata.create_all(bind=engine)
