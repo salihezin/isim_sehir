@@ -1,6 +1,7 @@
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -34,10 +35,45 @@ def get_db():
     finally:
         db.close()
 
+@app.get("/")
+async def root(request: Request):
+    return templates.TemplateResponse("start.html", {"request": request})
+
+@app.post("/lobby")
+async def lobby_endpoint(request: Request):
+    data = await request.json()
+    print(f"Lobby verisi: {data}")
+    game_id = data.get("game_id")
+    host_name = data.get("host")
+    print(f"Lobby bilgileri: game_id={game_id}, host_name={host_name}")
+    if not game_id:
+        return {"error": "game_id gerekli"}
+    return {"game_id": game_id, "host_name": host_name, "round_time": data.get("round_time", 20)}
+
+@app.get("/lobby.html", response_class=HTMLResponse)
+async def lobby_html(request: Request, game_id: str, host: str):
+    return templates.TemplateResponse("lobby.html", {
+        "request": request,
+        "game_id": game_id,
+        "host": host
+    })
+    
+@app.get("/game.html")
+async def serve_game_page(request: Request, game_id: str, player_name: str):
+    return templates.TemplateResponse("game.html", {
+        "request": request,
+        "game_id": game_id,
+        "player_name": player_name,
+        "host": player_name,
+        "round_letter": game_manager.get_round_letter(game_id),
+    })
+
+
 
 @app.post("/create-game")
 async def create_game_endpoint(request: Request):
     data = await request.json()
+    print(f"Oyun oluşturma isteği: {data}")
     host_name = data.get("host_name")
     if not host_name:
         return {"error": "host_name gerekli"}
@@ -45,7 +81,7 @@ async def create_game_endpoint(request: Request):
     round_time = data.get("round_time", 20)
     game_id = game_manager.create_game(host_name, round_time)
     print(f"Oyun oluşturuldu: {game_id} sahibi: {host_name}")
-    return {"game_id": game_id}
+    return {"game_id": game_id, "host_name": host_name, "round_time": round_time}
 
 
 @app.websocket("/ws/{game_id}/{player_name}")
@@ -90,7 +126,7 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str, player_name: st
                 
             elif data == "next_round":
                 game_manager.set_round_ended(game_id)
-                game_manager.set_round_letter(game_id, "")
+                game_manager.set_round_letter(game_id, game_manager.get_unused_letters(game_id).pop())
                 await notify_players(game_id)
                 
 
