@@ -9,6 +9,8 @@ class GameManager:
         from random import choice
         letters = ["A", "B", "C", "Ç", "D", "E", "F", "G", "H", "I", "İ", "K", "L", "M", "N", "O", "Ö", "P", "R", "S", "Ş", "T", "U", "Ü", "V", "Y", "Z"]
         chosen_letter = choice(letters)
+        used_letters = set()
+        used_letters.add(chosen_letter)
 
         self.active_games[game_id] = {
             "host": host_name,
@@ -17,6 +19,8 @@ class GameManager:
             "jury": None,
             "round_ended": False,
             "round_letter": chosen_letter,
+            "round": 1,
+            "used_letters": used_letters
         }
         return game_id
 
@@ -52,6 +56,12 @@ class GameManager:
 
     def get_round_letter(self, game_id):
         return self.active_games.get(game_id, {}).get("round_letter", "")
-
+    
+    def get_unused_letters(self, game_id):
+        import random
+        TURKISH_LETTERS = list("ABCÇDEFGHİJKLMNOÖPRSŞTUÜVYZ")
+        used = self.active_games.get(game_id, {}).get("used_letters", set())
+        unused = [letter for letter in TURKISH_LETTERS if letter not in used]
+        return random.choice(unused) if unused else None
 
 game_manager = GameManager()

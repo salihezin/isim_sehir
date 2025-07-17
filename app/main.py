@@ -1,15 +1,20 @@
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from database import Base, SessionLocal, engine
-from game_manager import game_manager
-from models import PlayerAnswer
+from app.database import Base, SessionLocal, engine
+from app.game_manager import game_manager
+from app.models import PlayerAnswer
 
 
 
 app = FastAPI()
 Base.metadata.create_all(bind=engine)
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
 
 # Basit CORS ayarı
 app.add_middleware(
@@ -82,6 +87,12 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str, player_name: st
                 import asyncio
                 await asyncio.sleep(22)  # 20 sn + 2 sn buffer
                 await broadcast_answers(game_id)
+                
+            elif data == "next_round":
+                game_manager.set_round_ended(game_id)
+                game_manager.set_round_letter(game_id, "")
+                await notify_players(game_id)
+                
 
             # İtiraz mesajı geldiğinde
             elif msg and msg.get("type") == "challenge_answer":
@@ -264,8 +275,8 @@ async def notify_jury_selected(game_id: str, jury_name: str):
 
 # Oyuncu cevaplarını tüm oyunculara gönder
 async def broadcast_answers(game_id: str):
-    from database import SessionLocal
-    from models import PlayerAnswer
+    from app.database import SessionLocal
+    from app.models import PlayerAnswer
 
     db = SessionLocal()
     letter = game_manager.get_round_letter(game_id)
